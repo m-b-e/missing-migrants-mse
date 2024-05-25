@@ -1,0 +1,173 @@
+---
+title: "Rcapture_Estimation"
+author: "Max Eckert"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##SETUP
+```{r}
+packages <- c("dplyr", "Rcapture") 
+suppressPackageStartupMessages(
+  invisible(lapply(packages, library, character.only = TRUE))
+)
+```
+
+
+### Generating Capture History from List of Matched Incidents
+
+Taking a dataframe, which includes all three lists, to generate a capture history, in which 1 indicates capture and 0 non-capture. 
+```{r}
+master_df <- read.csv2("./data/master_df.csv")
+
+capture_hist <- master_df %>%
+  mutate(
+    mmp = ifelse(!is.na(mmp_id), 1, 0),
+    foia = ifelse(!is.na(foia_id), 1, 0),
+    sdpcome = ifelse(!is.na(sd_pcome_id), 1, 0)
+  ) %>%
+  select(mmp, foia, sdpcome)
+
+head(capture_hist,10)
+```
+
+Converting the result into a matrix, which is then fed into the algorithm.
+
+```{r}
+capture_hist_matrix <- capture_hist %>% as.matrix()
+```
+
+##Descriptives about the Capture Hist
+```{r}
+all_three <- sum(rowSums(capture_hist_matrix == 1) == 3)
+
+# Count the rows with 1 for each pairwise combination
+pairwise_mmp_foia <- sum(rowSums(capture_hist_matrix[, c("mmp", "foia")] == 1) == 2)
+pairwise_foia_sdpcome <- sum(rowSums(capture_hist_matrix[, c("foia", "sdpcome")] == 1) == 2)
+pairwise_mmp_sdpcome <- sum(rowSums(capture_hist_matrix[, c("mmp", "sdpcome")] == 1) == 2)
+
+# Output the results
+print(paste("Rows with 1 for all three lists:", all_three))
+print(paste("Rows with 1 for list 'mmp' and 'foia':", pairwise_mmp_foia))
+print(paste("Rows with 1 for list 'foia' and 'sdpcome':", pairwise_foia_sdpcome))
+print(paste("Rows with 1 for list 'mmp' and 'sdpcome':", pairwise_mmp_sdpcome))
+
+# Create a new variable indicating rows with only one column having a value of 1
+df <- df %>%
+  mutate(unique_count = rowSums(. == 1) == 1)
+
+
+# Count the number of rows where each column has a value of 1 while the other columns have 0
+mmp_unique <- sum(capture_hist_matrix[, "mmp"] == 1 & capture_hist_matrix[, "foia"] == 0 & capture_hist_matrix[, "sdpcome"] == 0)
+foia_unique <- sum(capture_hist_matrix[, "mmp"] == 0 & capture_hist_matrix[, "foia"] == 1 & capture_hist_matrix[, "sdpcome"] == 0)
+sdpcome_unique <- sum(capture_hist_matrix[, "mmp"] == 0 & capture_hist_matrix[, "foia"] == 0 & capture_hist_matrix[, "sdpcome"] == 1)
+
+# Print the result
+print(c(mmp_unique, foia_unique, sdpcome_unique))
+
+
+```
+
+
+# Generate a closed population estimate
+
+```{r}
+descr <- descriptive(capture_hist_matrix, dfreq = FALSE)
+descr
+plot(descr)
+```
+There is only a very small overlap between all three lists (n=3), esp. since the MMP list is the smallest (n=22 units), the bigger overlap is between lists of the US Border Patrol FOIA request (n=339) and the Offices of the Medical Examiners (n=600). 
+
+```{r}
+
+```
+
+
+## Running a Close Population Estimate
+
+```{r}
+cp <- closedp(capture_hist_matrix)
+```
+
+```{r}
+models <- as.data.frame(cp$results)
+models <- models %>% subset(infoFit == 0)
+```
+First thoughts: Standard Error moderate across models, with the exception of the bottom three. Column _infoFit_ contains a numerical code giving information about errors or warnings encountered; _0_ no error or warning occured while fitting the model; _1_ a warning indicating that the model fit is questionnable occured (algorithm did not converge, non-positive sigma estimate for a normal heterogeneous model or large asymptotic bias). No errors found. Very high variance for several models indicates a poor fit though. 
+
+```{r}
+cp_h <- closedpMS.t(capture_hist_matrix)
+```
+
+```{r}
+M0_ci <- closedpCI.0(capture_hist_matrix, dfreq=FALSE, m="M0")
+```
+
+```{r}
+Mt_ci <- closedpCI.t(capture_hist_matrix, dfreq=FALSE, m="Mt")
+```
+
+```{r}
+Mthchao_ci <- closedpCI.t(capture_hist_matrix, dfreq=FALSE, m="Mth")
+```
+
+```{r}
+Mh_ci <- closedpCI.t(capture_hist_matrix, dfreq=FALSE, m="Mh")
+```
+
+
+```{r}
+descriptive(capture_hist_matrix, dfreq = FALSE)
+```
+Confidence Interval for Loglinear Model [1,2,3]
+```{r}
+abundance_estimation <- 1134.6
+standard_error <- 46.8
+
+# Degrees of freedom (df)
+df <- 2  # From the model output
+
+# Critical value for a 95% confidence interval
+critical_value <- qt(0.975, df)  # 0.975 for a two-tailed test
+
+# Calculate the margin of error
+margin_of_error <- critical_value * standard_error
+
+# Calculate the confidence interval
+lower_bound <- abundance_estimation - margin_of_error
+upper_bound <- abundance_estimation + margin_of_error
+
+# Print the confidence interval
+cat("95% Confidence Interval for Abundance Estimation:", "\n")
+cat("Lower Bound:", lower_bound, "\n")
+cat("Upper Bound:", upper_bound, "\n")
+```
+
+Confidence Interval for Loglinear Model [13,2]
+```{r}
+abundance_estimation <- 1114.9
+standard_error <- 45.5 
+
+# Degrees of freedom (df)
+df <- 2  # From the model output
+
+# Critical value for a 95% confidence interval
+critical_value <- qt(0.975, df)  # 0.975 for a two-tailed test
+
+# Calculate the margin of error
+margin_of_error <- critical_value * standard_error
+
+# Calculate the confidence interval
+lower_bound <- abundance_estimation - margin_of_error
+upper_bound <- abundance_estimation + margin_of_error
+
+# Print the confidence interval
+cat("95% Confidence Interval for Abundance Estimation:", "\n")
+cat("Lower Bound:", lower_bound, "\n")
+cat("Upper Bound:", upper_bound, "\n")
+```
+
